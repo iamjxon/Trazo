@@ -1,0 +1,57 @@
+name: Compilar Trazo (Windows)
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt pytest pyinstaller
+
+      - name: Pruebas (informativas: no bloquean la compilación)
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: Compilar con PyInstaller
+        run: >
+          pyinstaller --noconfirm --clean --windowed --name Trazo
+          --exclude-module PySide6.QtNetwork
+          --exclude-module PySide6.QtQml
+          --exclude-module PySide6.QtQuick
+          --exclude-module PySide6.QtPdf
+          run_trazo.py
+
+      - name: Comprobar que el ejecutable existe
+        run: if (-not (Test-Path dist/Trazo/Trazo.exe)) { throw "No se generó Trazo.exe" }
+
+      - name: Empaquetar
+        run: Compress-Archive -Path dist/Trazo -DestinationPath Trazo-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Trazo-windows
+          path: Trazo-windows.zip
+
+      - name: Publicar release (solo con tags v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Trazo-windows.zip
